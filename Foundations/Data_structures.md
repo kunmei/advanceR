@@ -52,6 +52,359 @@ c(1, c(2, c(3, 4)))
 #> [1] 1 2 3 4# the same asc(1, 2, 3, 4)
 #> [1] 1 2 3 4
 ```
+缺失值指定为NA，是一个长度为1的逻辑向量。如果你在c()里面使用NA值， NA值总是被强制转换成正确的类型。或者你可以用NA_real_ （一个双精度向量）、NA_integer_ 和NA_character_.创建指定类型的NA。
+
+##### 类型和测试
+给定一个向量，你可以用typeof()查看它的类型，或者用is函数去查看其是否是指定的类型。is.character(), is.double(), is.integer(), is.logical(), 或者更通用的is.atomic().
+
+```
+int_var <- c(1L, 6L, 10L)
+typeof(int_var)
+#> [1] "integer"
+is.integer(int_var)
+#> [1] TRUE
+is.atomic(int_var)
+#> [1] TRUE
+
+dbl_var <- c(1, 2.5, 4.5)
+typeof(dbl_var)
+#> [1] "double"
+is.double(dbl_var)
+#> [1] TRUE
+is.atomic(dbl_var)
+#> [1] TRUE
+```
+**请注意**：is.numeric() 是数值类型vector的通用检验。对double和integer类型的向量都返回TRUE。不是针对double向量的特别检验，其通常被称为数值型。
+
+```
+is.numeric(int_var)
+#> [1] TRUE
+is.numeric(dbl_var)
+#> [1] TRUE
+```
+##### 强制转换
+一个原子向量的所有类型必须是同一个类型。因此当你尝试去组合不同的类型，它们将被强制转换成最灵活的类型。类型灵活程度从低到高的排序是：logical, integer, double, and character.
+举个例子，组合字符和整数将产生字符。
+
+```
+str(c("a", 1))
+#>  chr [1:2] "a" "1"
+```
+当一个逻辑向量被强制转成整型或者双精度型，TRUE变成1， FALSE变成0. 这个结合sum() 和 mean() 非常好用。
+
+```
+x <- c(FALSE, FALSE, TRUE)
+as.numeric(x)
+#> [1] 0 0 1
+
+# Total number of TRUEs
+sum(x)
+#> [1] 1
+
+# Proportion that are TRUE
+mean(x)
+#> [1] 0.3333333
+```
+强制转换通常是自动发生的。大多数数学函数(+, log, abs, etc.)将转成双精度和整型，大多数(&, |, any, etc) 逻辑操作将转成逻辑类型。如果强制转换的过程中丢失了信息，你通常会得到一个警告信息。
+为了避免混淆，可以用as.character(), as.double(),as.integer(), or as.logical()进行强制转换。
+
+##### 列表
+列表不同于原子向量，是因为它们的元素可以是任意类型，包括一个列表。创建一个列表用list()而不是c()。
+
+```
+x <- list(1:3, "a", c(TRUE, FALSE, TRUE), c(2.3, 5.9))
+str(x)
+#> List of 4
+#>  $ : int [1:3] 1 2 3
+#>  $ : chr "a"
+#>  $ : logi [1:3] TRUE FALSE TRUE
+#>  $ : num [1:2] 2.3 5.9
+```
+列表有时候被称为循环的向量。因为一个列表可以包含其他列表。这个使得它们同原子向量有根本区别。
+
+```
+x <- list(list(list(list())))
+str(x)
+#> List of 1
+#>  $ :List of 1
+#>   ..$ :List of 1
+#>   .. ..$ : list()
+is.recursive(x)
+#> [1] TRUE
+```
+c() 可以组合不同的列表到一个。如果将一个原子向量和列表进行组合，c()将在组合它们之前将向量强制转成列表。比较下面list()和c()结果的不同。
+
+```
+x <- list(list(1, 2), c(3, 4))
+y <- c(list(1, 2), c(3, 4))
+str(x)
+#> List of 2
+#>  $ :List of 2
+#>   ..$ : num 1
+#>   ..$ : num 2
+#>  $ : num [1:2] 3 4
+str(y)
+#> List of 4
+#>  $ : num 1
+#>  $ : num 2
+#>  $ : num 3
+#>  $ : num 4
+```
+列表的typeof() 是list。可以用is.list()检验一个list，也可以用as.list()强制转换成一个list。你可以用unlist()将一个list转成原子向量。如果一个list中包含不同的类型。unlist()使用同c()相同的转换规则。
+在R中很多更加复杂的数据结构是用list进行构建的。举个例子，数据框和线性模型对象（由lm()生成）都是list：
+
+```
+is.list(mtcars)
+#> [1] TRUE
+
+mod <- lm(mpg ~ wt, data = mtcars)
+is.list(mod)
+#> [1] TRUE
+```
+##### 属性
+所有的对象都可以有任意的额外的属性,用于储存关于该对象的元信息。属性可以被看做是一个有名字的列表。可以用attr()单独获得属性，或者利用attribute()得到所有属性。
+
+```
+y <- 1:10
+attr(y, "my_attribute") <- "This is a vector"
+attr(y, "my_attribute")
+#> [1] "This is a vector"
+str(attributes(y))
+#> List of 1
+#>  $ my_attribute: chr "This is a vector"
+```
+函数structure()返回一个属性经过修改的新的对象：
+
+```
+structure(1:10, my_attribute = "This is a vector")
+#>  [1]  1  2  3  4  5  6  7  8  9 10
+#> attr(,"my_attribute")
+#> [1] "This is a vector"
+```
+默认的，当修改一个向量的时候，大多数属性将丢失：
+
+```
+attributes(y[1])
+#> NULL
+attributes(sum(y))
+#> NULL
+```
+下面最重要的三种属性将不会丢失：
+
+- **名字** 一个字符向量给每一个变量赋予一个名字，在names进行描述。
+- **维度** 被使用将向量转换成矩阵和数组，在matrices and arrays进行描述。
+- **类** 被使用去实现S3对象系统，在S3中进行描述。
+
+这些属性都有一个特定的访问函数去得到和设定值。当用到这些属性的时候，使用names(x), dim(x), 和class(x), 而不是attr(x, "names"), attr(x, "dim"), 和attr(x, "class")。
+
+##### 名字
+你可以用三种方式对向量进行命名：
+- 在创建向量的时候： x <- c(a = 1, b = 2, c = 3)。
+- 适当地修改一个已经存在的向量：x <- 1:3; names(x) <- c("a", "b", "c")。
+- 创建一个向量的修改备份：x <- setNames(1:3, c("a", "b", "c"))。
+
+名字不是必须是唯一的。然而，字符构造子集，在subsetting中描述的，是最重要的原因去使用名字，当名字是唯一的时候，也是最有用的。
+
+并不是一个向量的所有元素都需要一个名字。如果一些名字丢失了，names()将为这些元素返回空的字符。如果所有的名字都是丢失的，names()将返回NULL值。
+
+```
+y <- c(a = 1, 2, 3)
+names(y)
+#> [1] "a" ""  ""
+
+z <- c(1, 2, 3)
+names(z)
+#> NULL
+```
+你可以通过unname(x)去创建一个新的向量，或者用names(x) <- NULL在适当地时候移除名字。
+
+##### 因子
+使用属性的一个重要的原因是去定义因子。因子是一个只包含预定义值的向量，被使用去储存类别数据。因子是通过使用两个属性，在整数型向量上建立的：
+class(), “factor”, 这个属性使得它们与正规的整数向量表现不同， levels()定义了允许值的集合。
+
+```
+x <- factor(c("a", "b", "b", "a"))
+x
+#> [1] a b b a
+#> Levels: a b
+class(x)
+#> [1] "factor"
+levels(x)
+#> [1] "a" "b"
+
+# You can't use values that are not in the levels
+x[2] <- "c"
+#> Warning in `[<-.factor`(`*tmp*`, 2, value = "c"): invalid factor level, NA
+#> generated
+x
+#> [1] a    <NA> b    a   
+#> Levels: a b
+
+# NB: you can't combine factors
+c(factor("a"), factor("b"))
+#> [1] 1 1
+```
+当你知道一个变量可能出现的值的时候，因子是有用的，即使你看不到在给定全部数据中的所有值。当一些组不包含观察值的时候，用因子去替代字符型向量是明显的。
+
+```
+sex_char <- c("m", "m", "m")
+sex_factor <- factor(sex_char, levels = c("m", "f"))
+
+table(sex_char)
+#> sex_char
+#> m 
+#> 3
+table(sex_factor)
+#> sex_factor
+#> m f 
+#> 3 0
+```
+有时候当一个数据框是从文件中直接读取的，其中一个列是本来认为应该是数值型的向量，却产生了因子。这是因为列中包含非数值型的值，通常是一个缺失值，被一个特殊的方式表示，例如.或者-。
+为了解决这个问题，强制将一个向量从因子转成字符向量，然后再转成双精度型的向量。（这个过程之后，检查一个缺失值）。当然，一个更好的选择是在第一时间发现什么原因导致了这个问题，然后
+去修正它。使用read.csv()中的na.strings参数通常是一个好的选择。
+
+```
+# Reading in "text" instead of from a file here:
+z <- read.csv(text = "value\n12\n1\n.\n9")
+typeof(z$value)
+#> [1] "integer"
+as.double(z$value)
+#> [1] 3 2 1 4
+# Oops, that's not right: 3 2 1 4 are the levels of a factor, 
+# not the values we read in!
+class(z$value)
+#> [1] "factor"
+# We can fix it now:
+as.double(as.character(z$value))
+#> Warning: NAs introduced by coercion
+#> [1] 12  1 NA  9
+# Or change how we read it in:
+z <- read.csv(text = "value\n12\n1\n.\n9", na.strings=".")
+typeof(z$value)
+#> [1] "integer"
+class(z$value)
+#> [1] "integer"
+z$value
+#> [1] 12  1 NA  9
+# Perfect! :)
+```
+不幸的，在R中大多数数据加载函数都自动地将字符型向量转成因子。这是次优的。因为对于这些函数，没有办法知道集合所有可能的水平或者它们最优的次序。可以使用参数stringsAsFactors = FALSE
+去抑制这种行为，然后手动地利用你对数据的理解将字符型向量转成因子。一个全局的操作，options(stringsAsFactors = FALSE)，可以去控制这个行为但是不推荐使用。当和其他代码结合时，改变
+这个全局设置可能造成无法预期的结果（来自其他包或者加载了其他代码）。同时全局设置也会造成代码比较难以理解，因为增加了代码的行数，并且你需要去理解一个单独的代码是如何工作的。
+
+尽管因子通常表现起来或看起来像是字符型向量，它们实际上是整数。当把它们看成是字符串的时候要小心。一些字符串函数，例如gsub()和grepl()将把因子强制转换成字符，然而其他（例如nchar()）将
+抛出一个错误，还有其他（例如c())将使用潜在的整数值。因为这种原因，如果你需要使用字符一样的行为，通常最好的方式是明确的将因子转换成字符型向量。在R的早期版本，使用因子相对于使用字符型
+向量具有内存优势，但是现在不存在了。
+
+##### 矩阵和数组
+对一个原子向量添加一个dim()的属性，将使其表现的像一个多维的数组。数组的一个特殊例子是矩阵，其具有两个维度。矩阵通常用作为统计数学机器的一部分。数组更罕见，但是值的注意。
+
+矩阵和数组可以分别通过matrix()和array()进行创建，或者使用dim()的赋值行为。
+
+```
+# Two scalar arguments to specify rows and columns
+a <- matrix(1:6, ncol = 3, nrow = 2)
+# One vector argument to describe all dimensions
+b <- array(1:12, c(2, 3, 2))
+
+# You can also modify an object in place by setting dim()
+c <- 1:6
+dim(c) <- c(3, 2)
+c
+#>      [,1] [,2]
+#> [1,]    1    4
+#> [2,]    2    5
+#> [3,]    3    6
+dim(c) <- c(2, 3)
+c
+#>      [,1] [,2] [,3]
+#> [1,]    1    3    5
+#> [2,]    2    4    6
+```
+length()和names()有高维的扩展：
+- length()在矩阵中扩展成nrow()和ncol()，在数组中扩展成dim()
+- name()在矩阵中扩展成rownames()和colnames()，在数组中扩展成dimnames()，一个字符向量的列表
+
+```
+length(a)
+#> [1] 6
+nrow(a)
+#> [1] 2
+ncol(a)
+#> [1] 3
+rownames(a) <- c("A", "B")
+colnames(a) <- c("a", "b", "c")
+a
+#>   a b c
+#> A 1 3 5
+#> B 2 4 6
+
+length(b)
+#> [1] 12
+dim(b)
+#> [1] 2 3 2
+dimnames(b) <- list(c("one", "two"), c("a", "b", "c"), c("A", "B"))
+b
+#> , , A
+#> 
+#>     a b c
+#> one 1 3 5
+#> two 2 4 6
+#> 
+#> , , B
+#> 
+#>     a  b  c
+#> one 7  9 11
+#> two 8 10 12
+```
+c()在矩阵中扩展成cbind()和rbind()，在数组中扩展成abind()（由abind包提供）。你可以用t()对矩阵进行转置。对数组来说用的是aperm()。
+
+你可以用is.matrix()和is.array()来测试一个对象是矩阵还是数组，用dim()查看长度。as.matrix()和as.array()可以将一个已经存在的向量
+转成矩阵或者数组。
+
+向量并不是唯一的一维数据结构。你可以有一个一行或者一列的矩阵，或者一个维度的数组。它们可能打印出来相似，但表现的不一样。不同并不是很重要，
+但当你从一个函数得到一个奇怪的输出的时候，你就知道它们存在的必要了。（tapply()通常会产生这样的输出）。同时，可以使用str()揭示这种不同。
+
+```
+str(1:3)                   # 1d vector
+#>  int [1:3] 1 2 3
+str(matrix(1:3, ncol = 1)) # column vector
+#>  int [1:3, 1] 1 2 3
+str(matrix(1:3, nrow = 1)) # row vector
+#>  int [1, 1:3] 1 2 3
+str(array(1:3, 3))         # "array" vector
+#>  int [1:3(1d)] 1 2 3
+```
+当原子向量通常转成向量的时候，维度属性仍然可以加列表上使其变成列表矩阵或者列表数组。
+
+```
+l <- list(1:3, "a", TRUE, 1.0)
+dim(l) <- c(2, 2)
+l
+#>      [,1]      [,2]
+#> [1,] Integer,3 TRUE
+#> [2,] "a"       1
+```
+这些都是相对复杂的数据结构，但是当你想把对象弄成网格状的结构，将会有用的。举个例子，如果你在一个时空网格上面训练模型，你就可以用一个三维的数组就保存这样一个网格结构的模型。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
