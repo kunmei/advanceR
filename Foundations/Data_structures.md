@@ -387,6 +387,141 @@ l
 ```
 这些都是相对复杂的数据结构，但是当你想把对象弄成网格状的结构，将会有用的。举个例子，如果你在一个时空网格上面训练模型，你就可以用一个三维的数组就保存这样一个网格结构的模型。
 
+##### 数据框
+数据框是R中存储数据最常用的方式，如果你系统地使用将使得数据分析变得更容易。从内部结构看，数据框是一个等长度向量的列表。这使得它是一个二维的结构，所有它兼具矩阵和列表的特性。
+这意味着可以用names(), colnames()和rownames(),尽管names()和colnames()是一回事。数据框的长度是底层的长度，因此ncol()返回数据框的长度；nrow()返回数据框的行数。
+
+在构造子集会描述，你可以构造一个一维或者二维的数据框，一维表现得像一个列表，二维表现得像一个矩阵。
+
+##### 强制转换
+你可以用data.frame()创建一个数据框，它是将一个向量作为输入：
+
+```
+df <- data.frame(x = 1:3, y = c("a", "b", "c"))
+str(df)
+#> 'data.frame':    3 obs. of  2 variables:
+#>  $ x: int  1 2 3
+#>  $ y: Factor w/ 3 levels "a","b","c": 1 2 3
+```
+注意data.frame()默认将字符串转成因子。使用stringAsFactors = FALSE去抑制这个行为。
+
+```
+df <- data.frame(
+  x = 1:3,
+  y = c("a", "b", "c"),
+  stringsAsFactors = FALSE)
+str(df)
+#> 'data.frame':    3 obs. of  2 variables:
+#>  $ x: int  1 2 3
+#>  $ y: chr  "a" "b" "c"
+```
+##### 验证和强制转换
+因为数据框是一个S3类型的对象，它的类型反映了创建它的底层向量，即一个列表。检查一个对象是否是数据框，可以使用class()或者精确的用is.data.frame()。
+
+```
+typeof(df)
+#> [1] "list"
+class(df)
+#> [1] "data.frame"
+is.data.frame(df)
+#> [1] TRUE
+```
+你可以用as.data.frame()强制将一个对象转成数据框。
+- 一个向量将变成一个1列的数据框
+- 一个列表将把每个元素转成一列，如果它们的长度不相等，将会报错
+- 一个数组变成数据框，将保持同样的行和同样的列
+
+##### 链接数据框
+你可以使用cbind()和rbind()连接数据框
+
+```
+cbind(df, data.frame(z = 3:1))
+#>   x y z
+#> 1 1 a 3
+#> 2 2 b 2
+#> 3 3 c 1
+rbind(df, data.frame(x = 10, y = "z"))
+#>    x y
+#> 1  1 a
+#> 2  2 b
+#> 3  3 c
+#> 4 10 z
+```
+当连接列的时候，行数必须要保持统一，但行的名字可以忽略。当连接行的时候，列的数据和名字都要匹配。可以使用plyr::rbind.fill()将不同长度的列连接起来。
+
+通过用cbind()将向量整合在一起创建数据框通常是错误的。不行是因为cbind()会创建一个矩阵，除非其中一个元素已经是一个数据框。直接用data.frame()进行创建：
+
+```
+bad <- data.frame(cbind(a = 1:2, b = c("a", "b")))
+str(bad)
+#> 'data.frame':    2 obs. of  2 variables:
+#>  $ a: Factor w/ 2 levels "1","2": 1 2
+#>  $ b: Factor w/ 2 levels "a","b": 1 2
+good <- data.frame(a = 1:2, b = c("a", "b"),
+  stringsAsFactors = FALSE)
+str(good)
+#> 'data.frame':    2 obs. of  2 variables:
+#>  $ a: int  1 2
+#>  $ b: chr  "a" "b"
+```
+cbind()的转换规则是复杂的，一个最好的方法去避免就是确保所有的数据类型都是一样的。
+
+##### 特殊的列
+因为数据框是一个向量的列表，所以对于一个数据框来说，可以有一列是一个列表
+
+```
+df <- data.frame(x = 1:3)
+df$y <- list(1:2, 1:3, 1:4)
+df
+#>   x          y
+#> 1 1       1, 2
+#> 2 2    1, 2, 3
+#> 3 3 1, 2, 3, 4
+```
+然而当一个列传入data.frame(),它尝试将列表中的每一个元素放进自己的列里面，所以无法创建：
+
+```
+data.frame(x = 1:3, y = list(1:2, 1:3, 1:4))
+#> Error in data.frame(1:2, 1:3, 1:4, check.names = FALSE, stringsAsFactors = TRUE): arguments imply differing number of rows: 2, 3, 4
+```
+一个变通方案是使用I(),这个函数将使得data.frame()把这个列表当做一个单元：
+
+```
+dfl <- data.frame(x = 1:3, y = I(list(1:2, 1:3, 1:4)))
+str(dfl)
+#> 'data.frame':    3 obs. of  2 variables:
+#>  $ x: int  1 2 3
+#>  $ y:List of 3
+#>   ..$ : int  1 2
+#>   ..$ : int  1 2 3
+#>   ..$ : int  1 2 3 4
+#>   ..- attr(*, "class")= chr "AsIs"
+dfl[2, "y"]
+#> [[1]]
+#> [1] 1 2 3
+```
+I()函数添加了一个AsIs的类到它的输入，但是这个通常可以忽略掉。
+
+类似的，数据框的一列也可以是一个矩阵或者数组，只要其行数和数据框可以匹配。
+
+```
+dfm <- data.frame(x = 1:3, y = I(matrix(1:9, nrow = 3)))
+str(dfm)
+#> 'data.frame':    3 obs. of  2 variables:
+#>  $ x: int  1 2 3
+#>  $ y: 'AsIs' int [1:3, 1:3] 1 2 3 4 5 6 7 8 9
+dfm[2, "y"]
+#>      [,1] [,2] [,3]
+#> [1,]    2    5    8
+```
+使用列表和数组列的时候要谨慎：因为很多操作数据框的函数假设数据框的所有列是一个原子向量。
+
+
+
+
+
+
+
 
 
 
