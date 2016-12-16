@@ -186,7 +186,105 @@ mod$coefficients
 #> (Intercept)   log(disp) 
 #>   5.3809725  -0.4585683
 ```
-如果你使用其他面向对象的函数，这是可能会让你不习惯。但是
+如果你使用其他面向对象的函数，这是可能会让你不习惯。但是令人惊讶的是，这种灵活性会很少造成问题：尽管你能改变对象的类型，但你从不应该。R语言不会保护你自己：你可以轻松地拿石头砸自己的脚。
+只要你不朝你的脚开枪，你就不会有问题。
+
+##### 创建新的方法和泛型
+添加一个新的泛型，可以用UseMethod()创建一个函数。UseMethod()输入两个变量：一个是泛型函数的名字，一个是方法分发的使用。如果你忽略了第二个参数，它将根据第一个参数取分发函数。将泛型的任意参数传递给UseMethod()是没必要的，也是不应该的。UseMethod()通过黑科技自己找到它们。
+```
+f <- function(x) UseMethod("f")
+```
+一个没有方法的泛型是没有用的。添加一个方法，你仅仅需要用一个正确的名字去创建一个正规的函数：
+
+```
+f.a <- function(x) "Class a"
+
+a <- structure(list(), class = "a")
+class(a)
+#> [1] "a"
+f(a)
+#> [1] "Class a"
+```
+添加方法到已经存在的接口也是同样的方式：
+
+```
+mean.a <- function(x) "a"
+mean(a)
+#> [1] "a"
+```
+正如你所看见的，方法返回一个与接口相匹配的类是没有做检查的。你的方法不违背已经存在代码的期望，取决你自己。
+
+##### 方法分发
+S3的方法分发是相对简单的。UseMethod()创建了一个函数名字的向量，例如paste0("generic", ".", c(class(x), "default"))，然后轮流查找每一个。默认的类为不知道的类提供了一个了候补的方法。
+
+```
+f <- function(x) UseMethod("f")
+f.a <- function(x) "Class a"
+f.default <- function(x) "Unknown class"
+
+f(structure(list(), class = "a"))
+#> [1] "Class a"
+# No method for b class, so uses method for a class
+f(structure(list(), class = c("b", "a")))
+#> [1] "Class a"
+# No method for c class, so falls back to default
+f(structure(list(), class = "c"))
+#> [1] "Unknown class"
+```
+组泛型方法加起来可能有一些复杂。组泛型可以实现通过一个函数为多个泛型提供方法。四个组泛型和它们包括的函数是：
+- Math: abs, sign, sqrt, floor, cos, sin, log, exp, …
+- Ops: +, -, *, /, ^, %%, %/%, &, |, !, ==, !=, <, <=, >=, >
+- Summary: all, any, sum, prod, min, max, range
+- Complex: Arg, Conj, Im, Mod, Re
+
+组泛型是相对比较高级的技巧，并且超过了本章节的范围，你可以通过?groupGeneric查看更多帮助。最重要的事情是意识到Math, Ops, Summary和Complex不是真正的函数，而是代表了函数的组。注意
+在组泛型函数的内部，有一个特殊的变量.Generic提供了真正的泛型函数。
+
+如果你有复杂的类层次结构，调用父方法有时是有用的。但是如何精确地定义是比较棘手的，如果当前的方法不存在，这个父方法将会被调用。同时，这是一个比较高级的技巧，你可以在?NextMethod中找到。
+
+因为方法都是正常的R函数，你可以直接调用它们：
+
+```
+c <- structure(list(), class = "c")
+# Call the correct method:
+f.default(c)
+#> [1] "Unknown class"
+# Force R to call the wrong method:
+f.a(c)
+#> [1] "Class a"
+```
+然而，改变一个对象的类是危险的，你不应该这么做。请不要朝自己的脚上开枪。直接调用方法的唯一理由是有时候你可以通过去除方法分发得到性能的提升。详细看**性能**章节。
+
+你还可以用一个非S3的对象调用S3的泛型。非内部非S3泛型将分发给基础类型的隐式类。（内部的泛型不是因为性能原因这样做。决定一个基础类型的隐式类是复杂的，如下面的函数
+所示：
+
+```
+iclass <- function(x) {
+  if (is.object(x)) {
+    stop("x is not a primitive type", call. = FALSE)
+  }
+
+  c(
+    if (is.matrix(x)) "matrix",
+    if (is.array(x) && !is.matrix(x)) "array",
+    if (is.double(x)) "double",
+    if (is.integer(x)) "integer",
+    mode(x)
+  )
+}
+iclass(matrix(1:5))
+#> [1] "matrix"  "integer" "numeric"
+iclass(array(1.5))
+#> [1] "array"   "double"  "numeric"
+```
+
+
+
+
+
+
+
+
 
 
 
