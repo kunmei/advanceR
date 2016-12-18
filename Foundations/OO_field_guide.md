@@ -276,6 +276,283 @@ iclass(matrix(1:5))
 iclass(array(1.5))
 #> [1] "array"   "double"  "numeric"
 ```
+##### S4
+S4和S3工作类似，不过更加正式和严格。方法仍然属于函数，不是类，但是：
+- 类有正式的定义，描述了它们的领域和继承结构，父类。
+- 方法分发可以基于泛型函数的多个参数进行，而不仅仅是一个。
+- 有一个特殊的操作算子，@， 用来提取S4对象的槽（字段）
+
+所有S4相关的代码都保存在爱methods这个包里面。当你交互式地执行R的时候，这个包总是有的，但是当用批模式跑R的时候不一定得到。这是这个原因，无论你什么时候使用S4，
+明确的library(methods)是一个好的注意。
+
+S4是一个丰富且复杂的系统。用几页纸肯定不能完全解释清楚。这里我将聚焦与S4底层主要的思想，从而你可以搞笑地使用已经存在的S4对象。学习更多，这里有一些推荐：
+- [S4 system development in Bioconductor](http://www.bioconductor.org/help/course-materials/2010/AdvancedR/S4InBioconductor.pdf)
+- John Chambers’ Software for Data Analysis
+- Martin Morgan’s answers to S4 questions on stackoverflow
+
+##### 识别对象，泛型函数和方法
+识别S4对象，泛型和方法是容易的。你可以识别一个S4的对象，因为str()把它描述成了一个正式的类，isS4()会返回TRUE，pryr::otype()返回"S4"。S4的泛型和方法是容易定义的，因为它们是带有很好类的定义的S4对象。
+
+在基础包里面(stats, graphics, utils, datasets and base)中没有经常使用的S4类，因此我们利用stats4这个包开始创建S4的对象，它提供了一些S4的类和最大似然估计相联系的方法。
+
+```
+library(stats4)
+
+# From example(mle)
+y <- c(26, 17, 13, 12, 20, 5, 9, 8, 5, 4, 8)
+nLL <- function(lambda) - sum(dpois(y, lambda, log = TRUE))
+fit <- mle(nLL, start = list(lambda = 5), nobs = length(y))
+
+# An S4 object
+isS4(fit)
+#> [1] TRUE
+otype(fit)
+#> [1] "S4"
+
+# An S4 generic
+isS4(nobs)
+#> [1] TRUE
+ftype(nobs)
+#> [1] "s4"      "generic"
+
+# Retrieve an S4 method, described later
+mle_nobs <- method_from_call(nobs(fit))
+isS4(mle_nobs)
+#> [1] TRUE
+ftype(mle_nobs)
+#> [1] "s4"     "method"
+```
+使用is()带一个参数可以列出一个对象继承的所有类。使用is()带两个参数可以检验一个对象是否从一个特殊的类继承。
+
+```
+is(fit)
+#> [1] "mle"
+is(fit, "mle")
+#> [1] TRUE
+```
+你可以用getGenerics()列出所有S4的泛型，用getClasses()列出所有的S4的类。这个列表包括针对S3类和基础类型的垫片类。你可以用showMethods()列出所有的S4方法，可选择的通过泛型或者是通过类。提供where = search()限制搜索的环境也是好的注意。
+
+##### 定义类和创建对象
+在S3中，你可以将任意对象转变成一个特殊类型的对象，仅仅设置类属性。S4是更加严格的：你必须用setClass()定义类的表达方式，用new()的方式创建一个新的对象。你可以用特殊的语法：class?className, e.g., class?mle，查找一个类的文档。
+
+一个S4类有三个主要的特性：
+- **名字** 一个字母-数字类定义，按照惯例，S4类的名字采用大驼峰。
+- **槽**(slots)的名字列表,定义了槽的名字和允许类。举个例子，一个人的类可能是由一个字符型的名字和一个数值型的年龄定义：list(name = "character", age = "numeric")。
+- 继承类的字符类型，或者在S4的术语中，叫做**contains**。你可以针对多重继承提供多个类，但是这是一个高级的技术，增加了复杂性。
+
+在slots和contains，你可以使用S4类，或者是用setOldClass()注册的S3类，或者是基础类型的隐式类。你slots你还可以使用ANY这个特殊咧，从而不限制输入。
+
+S4类可以有其他的可选择的特性，例如一个validity方法，测试一个对象是否是固定的，和一个prototype对象定义默认的slot值。具体可以看?setClass。
+
+下面的例子创建了一个拥有name和age字段的Person类，和一个Employee类继承于Person。这个
+Employee类继承Person的槽和方法，并且添加一个额外的slot，boss。我们可以通过用一个类的名字，slot值的名字-值对来调用new()来创建对象。
+
+```
+setClass("Person",
+  slots = list(name = "character", age = "numeric"))
+setClass("Employee",
+  slots = list(boss = "Person"),
+  contains = "Person")
+
+alice <- new("Person", name = "Alice", age = 40)
+john <- new("Employee", name = "John", age = 20, boss = alice)
+```
+大多数S4类会有一个构造函数，名字同类的名字相同：如果存在，使用它代替直接调用new()。
+
+取得一个S4对象的槽使用@或者slot():
+
+```
+alice@age
+#> [1] 40
+slot(john, "boss")
+#> An object of class "Person"
+#> Slot "name":
+#> [1] "Alice"
+#> 
+#> Slot "age":
+#> [1] 40
+```
+(@ 等同于 $, slot()等同于 [[.)
+如果一个S4对象包含（继承于）一个S3类或者一个基础类型，会有一个特殊的.Data槽，包含了潜在的基础的类型或者是S3对象：
+
+```
+setClass("RangedNumeric",
+  contains = "numeric",
+  slots = list(min = "numeric", max = "numeric"))
+rn <- new("RangedNumeric", 1:10, min = 1, max = 10)
+rn@min
+#> [1] 1
+rn@.Data
+#>  [1]  1  2  3  4  5  6  7  8  9 10
+```
+因为R是一个交互式的编程语言，你可以在任意时刻创建一个新类或者重新定义已经存在的类。当你交互式操作S4的时候，这可能是一个问题。如果你修改一个类，确保还要重新创建这个类的任何对象，否则你将遇到非法的对象。
+
+##### 创建新的方法和泛型
+S4提供了特殊的函数用来创建泛型和方法。setGeneric()创建一个新的泛型或者将一个已经存在的函数转变成泛型。setMethod()利用泛型的名字，方法使用到的类，以及实现该方法的一个函数类创建一个S4的method。举个例子，union()，通常使用在向量上，我们可以使它使用到数据框上面。
+
+```
+setGeneric("union")
+#> [1] "union"
+setMethod("union",
+  c(x = "data.frame", y = "data.frame"),
+  function(x, y) {
+    unique(rbind(x, y))
+  }
+)
+#> [1] "union"
+```
+如果你要从零开始创建一个新的接口，你需要提供一个函数调用standardGeneric():
+
+```
+setGeneric("myGeneric", function(x) {
+  standardGeneric("myGeneric")
+})
+#> [1] "myGeneric"
+```
+S4中的standardGeneric()等同于UseMethod()。
+##### 方法分发
+如果一个S4的泛型分发在只有一个父类的单个类上时，S4的方法分发就等同于S3的分发。最主要的不同是如何取设置默认值:S4使用特殊的类ANY去匹配任意的类型，"missing"去匹配一个缺失值。和S3一样，S4也有组泛型，用?S4groupGeneric可以查看文档,和一种调用父类的方法，callNextMethod()。
+
+如果通过多个参数，或者你的类具有多重继承的时候，方法分发将变得更加的复杂。规则描述在?Methods里面，但是它们是复杂的，并且很难去预测该调用哪种方法。因为这个原因，我强烈建议避免多重继承和多重分发，除非绝对有必要。
+
+最后，有两种方法可以找到给定一个特定的泛型调用，哪种方法被调用:
+
+```
+# From methods: takes generic name and class names
+selectMethod("nobs", list("mle"))
+
+# From pryr: takes an unevaluated function call
+method_from_call(nobs(fit))
+```
+#### RC
+引用类，或者简称RC是R中最新的面向对象系统。它们在2.12版本中被介绍。它们从基本上不同于S3和S4，是因为:
+- RC方法属于对象，而不是函数
+- RC的对象是可变的：通常的R copy-on-modify语义是不适用的
+
+这些特性使得RC对象表现的更像其他编程语言中的对象，例如Python，Ruby，Java和C#。引用类是用R代码实现的:它们是一个特殊的S4对象包装在一个环境中。
+
+##### 定义类和创建对象
+因为在R的基础包里面没有任何引用类，我们从创建一个开始。RC类描述有状态的对象是最好使用的，对象可以随着时间改变，因此我们创建一个简单的类去模拟一个银行账户。
+
+创建一个新的RC类和创建一个新的S4类是类似的，但是你需要使用setRefClass()代替setClass()。第一和唯一要求的参数是字母数字形式的name。当你用new()去创建一个新的RC对象时，使用setRefClass()返回的对象是生成新的对象是一种好的风格。（你可以用在S4对象上，但基本看不到）
+
+```
+Account <- setRefClass("Account")
+Account$new()
+#> Reference class object of class "Account"
+```
+setRefClass()同样接收一个名字-类型对的列表来定义类的fields。等同于S4的槽。同时额外传给new()的参数将初始化字段的值。你可以得到和设置字段的值通过$:
+
+```
+Account <- setRefClass("Account",
+  fields = list(balance = "numeric"))
+
+a <- Account$new(balance = 100)
+a$balance
+#> [1] 100
+a$balance <- 200
+a$balance
+#> [1] 200
+```
+除了为字段提供一个类的名字，你还可以提供一个获取方法。当你获取或者设置字段的时候，你可以增加定制的行为。具体看?setRefClass。
+
+注意RC对象是可变的，例如，它们有引用语义，不是copied-on-modify:
+
+```
+b <- a
+b$balance
+#> [1] 200
+a$balance <- 0
+b$balance
+#> [1] 0
+```
+由于这个原因，RC对象有一个copy()的方法，可以得到一个对象的复制:
+
+```
+c <- a$copy()
+c$balance
+#> [1] 0
+a$balance <- 100
+c$balance
+#> [1] 0
+```
+一个对象如果没有通过methods定义的行为可能不是有用的。RC方法和类联系，并且能随时修改它的字段。在下面的例子里，注意你可以通过名字得到字段的值，并且可以用<<-修改它们。你可以在Environments中学到更多关于<<-的知识。
+
+```
+Account <- setRefClass("Account",
+  fields = list(balance = "numeric"),
+  methods = list(
+    withdraw = function(x) {
+      balance <<- balance - x
+    },
+    deposit = function(x) {
+      balance <<- balance + x
+    }
+  )
+)
+```
+你可以用取得字段同样的方式取调用一个RC的方法:
+
+```
+a <- Account$new(balance = 100)
+a$deposit(100)
+a$balance
+#> [1] 200
+```
+最后，setRefClass()重要的参数还有contains。这是所要继承的父RC类的名字。下面的雷子创建了一个新的银行账号，返回一个错误从而阻止账户金额低于0。
+
+
+```
+NoOverdraft <- setRefClass("NoOverdraft",
+  contains = "Account",
+  methods = list(
+    withdraw = function(x) {
+      if (balance < x) stop("Not enough money")
+      balance <<- balance - x
+    }
+  )
+)
+accountJohn <- NoOverdraft$new(balance = 100)
+accountJohn$deposit(50)
+accountJohn$balance
+#> [1] 150
+accountJohn$withdraw(200)
+#> Error in accountJohn$withdraw(200): Not enough money
+```
+所有的引用类最终都继承于envRefClass。它提供了有用的方法，例如copy()，callSuper()（调用父的字段），field()（通过名字得到字段的值)， export()（等同于as()）,show()（覆盖print）。可以在setRefClass()的继承章节查看详细内容。
+
+##### 识别对象和方法
+你可以识别RC对象因为它们是继承于“refClass”(is(x, "refClass"))的S4对象 (isS4(x)) 。pryr::otype()将返回"RC"。RC方法也是S4对象，在类refMethodDef中。
+
+##### 方法分发
+在RC中方法分发是容易的，因为方法是和类联系在一起的，不是函数。当你调用
+x$f()的时候，R会在类x中寻找方法，然后在它的父类中，再到父类的父类，以此类推。在一个方法的内部，你可以直接用callSuper(...)调用父亲的方法。
+
+#### 选择一个系统
+在一门语言中，三种面向对象系统是很多的，但是对于多数的R编程来说，S3已经足够了。在R中你经常可以创建相当简单的对象和方法，针对已经存在的泛型函数，例如print()， summary()和plot()。S3是非常适合这个任务的，而且在我已经写过的R代码中绝大多数面向对象的代码都是S3。S3是有点古怪的，但是它可以用最小的代码完成工作。
+
+如果你要创建有相互联系对象的更加复杂的系统，S4可能会更加合适。一个好的例子就是 Douglas Bates and Martin Maechler写的Matrix的包。它被设计用来高效地储存和计算很多不同类型的稀疏矩阵。在1.1.3版本中，它定义了102个类和20ge泛型函数。这个包写的很好，注释得也很好，并且附带的简介vignette("Intro2Matrix", package = "Matrix")可对这个包的结构给出了很好的介绍。在Bioconductor包中S4也被广泛的使用，需要给不同生物之间复杂的相互关系进行建模。Bioconductor提供了很多学习S4的好的资源。如果你已经掌握了S3，S4是相对容易是掌握的，思想都是一样的，只是更加的正式，更加的严格，和更加的详细。
+
+如果你已经在主流的面向对象语言中编程过，RC将看起来非常自然。但是因为它们通过可变的状态所引起的副作用，将很难去理解。举个例子，当你在R中调用f(a, b)的时候，你可能会假设a和b将不会被修改。但是当a和b是一个RC对象，它们可以被随时的修改。更通俗的讲，当使用RC对象的时候，你需要尽可能地减少副作用，仅仅是可变状态是必须的时候才使用它们。大多数函数仍然应该是功能型的，并且没有副作用。这将使得代码是容易推出的，并且对于其他R语言编程者来说是容易理解的。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
