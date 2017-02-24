@@ -190,7 +190,344 @@ summary <- function(x) {
    IQR(x, na.rm = TRUE))
 }
 ```
-流失预警
+所有这五个函数都被同样的参数调用了五次，重复了五次。重复的代码会使我们的代码比较脆弱。这很容易产生bug，
+也很难适应不断变化的需求。
+
+为了移除重复的代码，你可以利用另一个函数编程的技巧:将函数保存在列表中。
+
+```
+summary <- function(x) {
+  funs <- c(mean, median, sd, mad, IQR)
+  lapply(funs, function(f) f(x, na.rm = TRUE))
+}
+```
+本章节将会更细节地讨论这些技巧。但是当你可以学习它们的时候，你需要学习最简单的函数编程工具，匿名函数。
+
+####　匿名函数
+在R中，函数本身就是对象。它们不是自动地和名字绑定。不像其他很多函数，例如C, C++, Python, and Ruby，R没有一个特殊的语法
+去创建一个有名字的函数:当你创建一个函数的时候，你使用正规的赋值操作符去给它一个名字。如果你没有给函数名字，你将得到一个匿名
+函数。
+
+当不值得去赋予一个函数名字的时候，你可以使用一个匿名函数:
+
+```
+lapply(mtcars, function(x) length(unique(x)))
+Filter(function(x) !is.numeric(x), mtcars)
+integrate(function(x) sin(x) ^ 2, 0, pi)
+```
+像R中很多其他函数一样，匿名函数有formals(), a body(), and a parent environment():
+
+```
+formals(function(x = 4) g(x) + h(x))
+#> $x
+#> [1] 4
+body(function(x = 4) g(x) + h(x))
+#> g(x) + h(x)
+environment(function(x = 4) g(x) + h(x))
+#> <environment: R_GlobalEnv>
+```
+你可以调用一个匿名函数，不需要给它名字，但是代码有点难以阅读，因为你以使用两种不同方式的括号:第一个去调用一个函数，第二个是为了
+明确你是调用一个匿名函数本身，而不是调用一个匿名函数内部的函数。
+
+```
+# This does not call the anonymous function.
+# (Note that "3" is not a valid function.)
+function(x) 3()
+#> function(x) 3()
+
+# With appropriate parenthesis, the function is called:
+(function(x) 3)()
+#> [1] 3
+
+# So this anonymous function syntax
+(function(x) x + 3)(10)
+#> [1] 13
+
+# behaves exactly the same as
+f <- function(x) x + 3
+f(10)
+#> [1] 13
+```
+你可以使用命名的参数调用匿名函数，但是这么做暗示你的函数需要一个名字。
+ 
+匿名函数一个最普通的应用是创建一个闭包，由其他函数创建的函数。闭包将在下一个章节介绍。
+
+#### 闭包
+“An object is data with functions. A closure is a function with data.” — John D. Cook
+
+匿名函数的一个使用是创建不值得命名的小的函数。另一个重要的应用是创建闭包，由其他函数写的函数。闭包得到它们的名字是因为它们
+enclose（封闭）了父函数的环境，并且可以取得它的所有变量。这是有用的，因为它允许我们有两层参数:父亲层参数控制着操作，子层
+参数真正做事情。
+
+下面的例子使用这种思想产生了幂函数的族，父亲函数是power()，创建了两个子函数（square()和cube()）。
+
+```
+power <- function(exponent) {
+  function(x) {
+    x ^ exponent
+  }
+}
+
+square <- power(2)
+square(2)
+#> [1] 4
+square(4)
+#> [1] 16
+
+cube <- power(3)
+cube(2)
+#> [1] 8
+cube(4)
+#> [1] 64
+```
+当你打印一个闭包的时候，你将不会看到特别有用的信息。
+
+```
+square
+#> function(x) {
+#>     x ^ exponent
+#>   }
+#> <environment: 0x3a50680>
+cube
+#> function(x) {
+#>     x ^ exponent
+#>   }
+#> <environment: 0x37f10f8>
+```
+这是因为函数本身并没有改变。不同的是函数的封闭环境，environment(square)。查看环境内容的一种方式是将其转换成一个列表:
+
+```
+as.list(environment(square))
+#> $exponent
+#> [1] 2
+as.list(environment(cube))
+#> $exponent
+#> [1] 3
+```
+另外一种方式查看闭包是使用pryr::unenclose()。这个函数用它们的值替代了定义在闭包环境中的变量。
+
+```
+library(pryr)
+unenclose(square)
+#> function (x) 
+#> {
+#>     x^2
+#> }
+unenclose(cube)
+#> function (x) 
+#> {
+#>     x^3
+#> }
+```
+一个闭包的父环境是创建它函数的执行环境,如下面的代码所示:
+
+```
+power <- function(exponent) {
+  print(environment())
+  function(x) x ^ exponent
+}
+zero <- power(0)
+#> <environment: 0x4197fa8>
+environment(zero)
+#> <environment: 0x4197fa8>
+```
+函数返回一个值之后，执行环境通常就消失了。然而，函数捕获了它们的封闭环境。这意味着当函数a返回函数b的时候，函数b捕获和保存了函数a的
+执行环境，并且它不消失。（这对内存使用有着重要的后果，具体细节看memory usage)
+
+在R中，几乎所有的函数都是一个闭包。所有的函数都记住了它们被创建时的环境，如果这个函数是你自己写的，那就是全局环境;如果是其他人写的，
+那就是包环境。唯一的意外就是原语函数，直接调用C代码，没有相联系的环境。
+
+闭包在制造函数工厂时是有用的，并且是R中管理可变状态的一种方式。
+
+##### 函数工厂
+一个函数工厂是制造一个新的函数的工厂。我们已经看到函数工厂的两个例子了，missing_fixer()和power()。你可以通过参数调用它们，描述了
+期望的行为，并且返回了一个为你工作的函数。对于missing_fixer()和power()，使用一个函数工厂代替一个具有多个参数的单一函数收益不是那么
+大的。下面的情况函数工作是最有用的:
+- 不同的程度是更加复杂的，带有更多的参数和更加复杂的函数体。
+- 当一些函数产生的时候，一些工作只需要被做一次。
+
+函数工作特别适用于最大似然问题，并且你可以在mathematical functionals看到更加引人注目的使用。
+
+##### 可变的状态
+在两个水平上面有变量允许你在函数调用之间维持状态。这是可能的，因为当执行环境每次被刷新的时候，封闭环境是不变的。在不同的水平管理变量的关键
+是使用双箭头赋值操作符。不像通常的单箭头赋值操作符总是在当前的环境中赋值，双箭头操作符将持续查找父环境的链知道找到匹配的名字。（Binding names to values）
+对于这如何工作有更细节的描述。
+
+同时，一个静态的父环境和<<-使得在不同函数调用中维持状态变得可能。下面的雷子展示了一个计数器，记录了一个函数被调用了多少次。new_counter每一次跑，它都创建了
+一个函数，在这个环境中初始化了计数器i，然后创建了一个新的函数。
+
+```
+new_counter <- function() {
+  i <- 0
+  function() {
+    i <<- i + 1
+    i
+  }
+}
+```
+新的函数是一个闭包，它的封闭环境是当new_counter()执行时所创建的环境。函数执行环境是临时的，但是闭包可以获取它被创建时的环境。在下面的例子里，闭包counter_one()
+和counter_two()执行时，每一个都取到它们子集的封闭环境，因此它们能获取不同的计数。
+
+```
+counter_one <- new_counter()
+counter_two <- new_counter()
+
+counter_one()
+```
+计数函数通过在它们的本地环境不修改变量的方法逃避了重新初始化的限制。因为变化是在不变的父环境中或者称为封闭环境中发生，它们在函数调用过程中被保存了。
+
+如果你不使用闭包会发生什么?如果你使用<-而不是<<-会发生什么?预测用下面的变体去替换new_counter()会发生什么，执行下面的代码并检查你的预测。
+
+```
+i <- 0
+new_counter2 <- function() {
+  i <<- i + 1
+  i
+}
+new_counter3 <- function() {
+  i <- 0
+  function() {
+    i <- i + 1
+    i
+  }
+}
+```
+在父亲环境中修改值是一个重要的技巧，因为这是R中产生可变状态的一种方式。可变状态通常是难的，因为每次你看起来像是修改一个对象，实际上你是在创建然后修改
+一个复制。然而，如果你的确需要可变的对象，你的代码通常不是简单的，使用引用类通常是更好的选择，在RC中描述的。
+
+闭包的功能是和functionals和function operators中更高级的思想是紧密耦合的。在这两章中你将看到更多的闭包。下面的章节讨论Ｒ中函数编程的第三个技巧:
+在列表中存储函数的能力。
+
+##### 函数列表
+在Ｒ中，函数可以保存在列表中。这使得可以更方便地操作相似函数族，同样的道理，数据框是为了更方便地操作相似的向量组。
+
+我们从简单的基准例子开始。想象一下你在比较计算算术平均不同方式的性能。你可以将每一种方法储存在列表中做到它:
+
+```
+compute_mean <- list(
+  base = function(x) mean(x),
+  sum = function(x) sum(x) / length(x),
+  manual = function(x) {
+    total <- 0
+    n <- length(x)
+    for (i in seq_along(x)) {
+      total <- total + x[i] / n
+    }
+    total
+  }
+)
+```
+从列表中调用函数是直接的。你抽取它然后调用它:
+
+```
+x <- runif(1e5)
+system.time(compute_mean$base(x))
+system.time(compute_mean[[2]](x))
+system.time(compute_mean[["manual"]](x))
+```
+调用每一个函数，可以使用lapply()。我们需要一个匿名函数或者一个新的命名函数，因为没有内置的函数去处理这种情景。
+
+```
+lapply(compute_mean, function(f) f(x))
+call_fun <- function(f, ...) f(...)
+lapply(compute_mean, call_fun, x)
+```
+为了统计每个函数的时间，我们需要组合lapply() and system.time():
+
+```
+lapply(compute_mean, function(f) system.time(f(x)))
+```
+函数列表的另一个用途是用多种方式汇总一个对象。为了实现它，我们可以将每个汇总函数放到一个列表中，然后用lapply()
+执行它们:
+
+```
+x <- 1:10
+funs <- list(
+  sum = sum,
+  mean = mean,
+  median = median
+)
+lapply(funs, function(f) f(x))
+```
+如果我们希望我们的汇总函数自动去除缺失值该怎么办呢？一种方式是制造一系列匿名函数，通过合适的参数取调用我们的汇总函数:
+
+```
+funs2 <- list(
+  sum = function(x, ...) sum(x, ..., na.rm = TRUE),
+  mean = function(x, ...) mean(x, ..., na.rm = TRUE),
+  median = function(x, ...) median(x, ..., na.rm = TRUE)
+)
+lapply(funs2, function(f) f(x))
+```
+然而，这个将产生一系列重复。除了不同的函数名字，每个函数基本是相同的。一个更好地办法是修改我们的lapply()函数调用去包含
+额外的参数:
+
+```
+lapply(funs, function(f) f(x, na.rm = TRUE))
+```
+##### 移动函数列表到全局环境
+有时候你可能想要创建函数列表，不需要使用特殊的语法就可以得到。举个例子，想象一下你想要创建HTML代码，通过将每一个tag映射到
+R函数中。下面的例子使用了一个函数工厂创建可函数，针对标签(paragraph), (bold), and (italics)。
+
+我已经将函数放到一个列表中去了因为我不想它们随时可以得到。在一个已经存在R函数和一个HTML标签中存在冲突的风险是高的。但是将
+它们放在一个列表中将会使代码更加冗余:
+
+```
+html$p("This is ", html$b("bold"), " text.")
+```
+取决于我们想要这种效果持续多久，消除html$的使用有三种选择:
+- 对于非常短暂的效果，你可以使用with():
+
+```
+　　with(html, p("This is ", b("bold"), " text."))
+```
+- 对于长期的效果，你可以将函数attach()到搜索路径上面，然后当你们完成了，可以detach():
+
+```
+  　attach(html)
+  　p("This is ", b("bold"), " text.")
+  　detach(html)
+```
+- 最后你可以使用list2env()函数将函数复制到全局环境中。你可以在完成之后，删除这些函数。
+
+```
+　　list2env(html, environment())
+  　p("This is ", b("bold"), " text.")
+　　rm(list = names(html), envir = environment())
+```
+我推荐第一种用法，使用with(),因为这使得代码在特殊的上下文时执行时非常明确，并且知道上下文是什么。
+
+##### 案例学习:数值积分
+为了总结本章，我将优先使用函数开发一个简单的数值积分工具。开发这个工具的每一步都是秉着减少重复和
+使得这个方法更加普适的原则。
+
+数值积分背后的思想很简单:使用一些小的组件近似找出曲线下面的面积。两个最简单的方法是中值点和梯形规则。
+中值规则用三角形近似曲线。梯形规则使用梯形。每一次我们从a到b对一个函数进行积分。对于这个例子，我们
+使用0到pi对sinx进行积分。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
