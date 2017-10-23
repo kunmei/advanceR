@@ -76,4 +76,9 @@ unlist(lapply(l, length))
 unlist(lapply(mtcars, class))
 mtcars[] <- lapply(mtcars, function(x) x / mean(x))
 ```
-
+x的片段总是提供给f作为第一个参数。如果你想要不同的参数，你可以使用一个匿名的参数。如果你想得到不同的参数，你可以使用一个匿名的函数。下面的例子在计算固定x的均值的时候使用了不同的衰减量。
+```
+trims <- c(0, 0.1, 0.2, 0.5)
+x <- rcauchy(1000)
+unlist(lapply(trims, function(trim) mean(x, trim = trim)))
+```
